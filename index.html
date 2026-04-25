@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Secure Document Sharing DApp</title>
+
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', sans-serif;
+      background: #f4f6f9;
+    }
+
+    .navbar {
+      background: #1e1e2f;
+      color: white;
+      padding: 15px 25px;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .wallet {
+      background: #4caf50;
+      padding: 5px 10px;
+      border-radius: 6px;
+      font-size: 13px;
+    }
+
+    .container {
+      display: flex;
+    }
+
+    .sidebar {
+      width: 200px;
+      background: #2c2c3e;
+      color: white;
+      height: 100vh;
+      padding: 20px;
+    }
+
+    .sidebar button {
+      width: 100%;
+      padding: 10px;
+      margin: 10px 0;
+      border: none;
+      background: #3d3d5c;
+      color: white;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+
+    .sidebar button:hover {
+      background: #57577a;
+    }
+
+    .main {
+      flex: 1;
+      padding: 30px;
+    }
+
+    .card {
+      background: white;
+      padding: 20px;
+      margin-bottom: 20px;
+      border-radius: 10px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    }
+
+    input {
+      width: 95%;
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+    }
+
+    button.action {
+      padding: 10px 20px;
+      border: none;
+      background: #007bff;
+      color: white;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    button.action:hover {
+      background: #0056b3;
+    }
+
+    button:disabled {
+      background: grey;
+      cursor: not-allowed;
+    }
+
+    #result {
+      padding: 15px;
+      background: #e9f5ff;
+      border-radius: 8px;
+      font-weight: bold;
+    }
+  </style>
+</head>
+
+<body>
+
+<div class="navbar">
+  <h2>📄 Document Sharing DApp</h2>
+  <div id="wallet" class="wallet">Not Connected</div>
+</div>
+
+<div class="container">
+
+  <div class="sidebar">
+    <button onclick="showSection('upload')">📤 Upload</button>
+    <button onclick="showSection('view')">📥 View</button>
+    <button onclick="showSection('share')">🤝 Share</button>
+    <button onclick="connect()">🔗 Connect</button>
+  </div>
+
+  <div class="main">
+
+    <!-- Upload -->
+    <div id="upload" class="card">
+      <h3>Upload Document</h3>
+      <input type="text" id="cidInput" placeholder="Enter CID">
+      <button id="uploadBtn" class="action" onclick="uploadDocument(event)">Upload</button>
+    </div>
+
+    <!-- View -->
+    <div id="view" class="card" style="display:none;">
+      <h3>View Document</h3>
+      <input type="number" id="docId" placeholder="Enter Document ID">
+      <button class="action" onclick="getDocument()">Get</button>
+    </div>
+
+    <!-- Share -->
+    <div id="share" class="card" style="display:none;">
+      <h3>Share Document</h3>
+      <input type="number" id="shareId" placeholder="Document ID">
+      <input type="text" id="userAddress" placeholder="User Address (0x...)">
+      <button id="shareBtn" class="action" onclick="shareDocument(event)">Share</button>
+    </div>
+
+    <div id="result">✨ Output will appear here</div>
+
+  </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.6.2/dist/ethers.umd.min.js"></script>
+
+<script>
+const contractAddress = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
+
+const abi = [
+  "function uploadDocument(string memory cid) public",
+  "function getDocument(uint256 id) public view returns (string,address)",
+  "function shareDocument(uint256 id, address user) public",
+  "function docCount() public view returns (uint256)"
+];
+
+let provider, signer, contract;
+
+function showSection(section) {
+  document.getElementById("upload").style.display = "none";
+  document.getElementById("view").style.display = "none";
+  document.getElementById("share").style.display = "none";
+  document.getElementById(section).style.display = "block";
+}
+
+async function connect() {
+  await window.ethereum.request({ method: "eth_requestAccounts" });
+
+  provider = new ethers.BrowserProvider(window.ethereum);
+  signer = await provider.getSigner();
+  contract = new ethers.Contract(contractAddress, abi, signer);
+
+  const address = await signer.getAddress();
+  document.getElementById("wallet").innerText =
+    address.slice(0,6) + "..." + address.slice(-4);
+
+  document.getElementById("result").innerText = "✅ Connected";
+}
+
+// UPLOAD (FIXED)
+async function uploadDocument(e) {
+  const btn = e.target;
+  const cid = document.getElementById("cidInput").value;
+
+  if (!cid) return alert("Enter CID");
+  if (!contract) return alert("Connect wallet first");
+
+  try {
+    btn.disabled = true;
+    btn.innerText = "Uploading...";
+
+    const tx = await contract.uploadDocument(cid);
+    await tx.wait();
+
+    const id = await contract.docCount();
+
+    document.getElementById("result").innerHTML =
+      `✅ Uploaded | ID: ${id}`;
+
+  } catch (err) {
+    console.error(err);
+    alert("Upload failed");
+  } finally {
+    btn.disabled = false;
+    btn.innerText = "Upload";
+  }
+}
+
+// GET
+async function getDocument() {
+  const id = document.getElementById("docId").value;
+
+  try {
+    document.getElementById("result").innerText = "⏳ Fetching...";
+
+    const data = await contract.getDocument(id);
+
+    const url = "https://ipfs.io/ipfs/" + data[0];
+
+    document.getElementById("result").innerHTML =
+      `📄 CID: ${data[0]}<br>
+       👤 Owner: ${data[1]}<br>
+       <a href="${url}" target="_blank">Open File</a>`;
+
+  } catch (err) {
+    document.getElementById("result").innerText =
+      "❌ Access Denied";
+  }
+}
+
+// SHARE (FIXED)
+async function shareDocument(e) {
+  const btn = e.target;
+  const id = document.getElementById("shareId").value;
+  const user = document.getElementById("userAddress").value;
+
+  if (!id || !user) return alert("Enter all fields");
+
+  try {
+    btn.disabled = true;
+    btn.innerText = "Sharing...";
+
+    const tx = await contract.shareDocument(id, user);
+    await tx.wait();
+
+    document.getElementById("result").innerText =
+      "✅ Shared Successfully";
+
+  } catch (err) {
+    console.error(err);
+    document.getElementById("result").innerText =
+      "❌ Share Failed (Only owner or invalid address)";
+  } finally {
+    btn.disabled = false;
+    btn.innerText = "Share";
+  }
+}
+
+// AUTO REFRESH
+if (window.ethereum) {
+  window.ethereum.on("accountsChanged", () => location.reload());
+  window.ethereum.on("chainChanged", () => location.reload());
+}
+</script>
+
+</body>
+</html>
